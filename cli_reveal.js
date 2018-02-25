@@ -10,6 +10,15 @@
  * 
  * 2018-02-02
  * TODO: Layouts Komponenten am Ende des REST Resource ... bzgl. nachzüglicher Formatierungen.
+ * 		Sub-TODO: Vertical Align
+ *		Vererbungskonzepte bzgl. Objekten --> in Shape::Placeholder
+ * 		LayoutObjectId --> Slide::SlideProperties - Es existieren (ggf.) mehr "Layouts" als "Slides"?!
+ * 		Vermeidung von Overheads: nur SlidewikiJSON enthaltene LayoutObjectIds verarbeiten
+ *		Verschaltete Vorschleifen? Einzelne "breaks" je Schleife ... Alternativen?!
+ *
+ *		Doppeltewerte Belegungen bzgl. bspw. Größen in Slides und Layout zu gleichen Objekten ...
+ *		Was gilt hier denn?
+ * 		
  */
 
 var fs = require('fs');
@@ -55,15 +64,61 @@ function JSONcreateDeck(presentation) {
         JSONdeck.height = scaledEMU2PX(presentation.pageSize.height.magnitude, 1);
     }
 
-    for (var i = 0; i < presentation.slides.length; i++) {
-        JSONdeck.children.push(JSONcreateSlide(presentation.slides[i]));
-    }
+    //
+    // Sezierung der REST-Resourcen bzgl. der GoogleJSON Slides
+    //
 
-    for (var j = 0; j < presentation.layouts.length; j++) {
-        console.log(presentation.layouts[j].objectId);
+    /*
+     * JSONslide speichert Slide-Ressourcen der GoogleJSON
+     * JSONslide wird anschließend bzgl. der Layout-Ressourcen erweitert / vervollständigt
+     */
+    var JSONslide = {};
+    for (var i = 0; i < presentation.slides.length; i++) {
+        // 
+        JSONslide = JSONcreateSlide(presentation.slides[i]);
+        JSONslide = JSONcompleteLayout(presentation.layouts, JSONslide);
+        JSONdeck.children.push(JSONslide);
     }
 
     return JSON.stringify(JSONdeck);
+}
+
+function JSONcompleteLayout(layouts, JSONslide) {
+    var JSONgoogleLayout = {};
+    var JSONgoogleObjectLayout = {};
+
+    for (var i = 0; i < layouts.length; i++) {
+        if (layouts[i].objectId == JSONslide.LayoutObjId) {
+            JSONgoogleLayout = layouts[i];
+            break;
+        }
+    }
+
+    if (JSONgoogleLayout != {}) {
+        for (var j = 0; j < JSONslide.slideElements.length; j++) {
+            for (var k = 0; k < JSONslide.slideElements[j].content.length; k++) {
+                for (var l = 0; l < JSONgoogleLayout.pageElements.length; l++) {
+                    if (JSONslide.slideElements[j].content[k].parentObjectId == JSONgoogleLayout.pageElements[l].objectId) {
+                        JSONgoogleObjectLayout = JSONgoogleLayout.pageElements[l];
+                        break;
+                    }
+                    if (JSONgoogleObjectLayout != {}) {
+                        break;
+                    }
+                }
+                if (JSONgoogleObjectLayout != {}) {
+                    break;
+                }
+            }
+            if (JSONgoogleObjectLayout != {}) {
+                break;
+            }
+        }
+    }
+
+    console.log(JSONgoogleObjectLayout);
+
+    return JSONslide;
 }
 
 function JSONcreateSlide(slide) {
@@ -75,6 +130,7 @@ function JSONcreateSlide(slide) {
         id: "1337",
         type: "slide",
         GoogleObjId: slide.objectId,
+        LayoutObjId: slide.slideProperties.layoutObjectId,
         slideElements: []
     };
 
@@ -170,15 +226,19 @@ function JSONcreateShape(shape, contentType) {
     var JSONcontent = {};
 
     if (shape.shapeType == 'TEXT_BOX' && typeof shape.text !== 'undefined' && typeof shape.text.textElements !== 'undefined') {
-        JSONcontent = JSONcreateTextBox(shape.text, contentType);
+        JSONcontent = JSONcreateTextBox(shape.text, contentType, shape.placeholder);
     }
 
     return JSONcontent;
 }
 
-function JSONcreateTextBox(text, contentType) {
+function JSONcreateTextBox(text, contentType, placeholder) {
     var JSONcontent = [];
-    var JSONtextElement = { "textType": "", "text": "", "html": "", "stylesheet": [] };
+    var JSONtextElement = { "textType": "", "text": "", "html": "", "parentObjectId": "", "stylesheet": [] };
+
+    if (typeof placeholder != 'undefined' && typeof placeholder.parentObjectId != 'undefined') {
+        JSONtextElement.parentObjectId = placeholder.parentObjectId;
+    }
 
     var listId = '';
     var nestingLevel = 0;
@@ -407,11 +467,6 @@ function JSONcreateTextBox(text, contentType) {
                 checkLink = true;
                 checkLastLink = JSONcontent[k].stylesheet[j].link;
                 JSONcontent[k].html += '<a href="' + JSONcontent[k].stylesheet[j].link + '">';
-            }
-
-            if ('Website improvements - www.slidewiki.eu ' == JSONcontent[k].text) {
-                console.log(JSONcontent[k].text[22]);
-                console.log(JSONcontent[k].text.substr(JSONcontent[k].stylesheet[j].startChar, JSONcontent[k].stylesheet[j].endChar - JSONcontent[k].stylesheet[j].startChar + 1));
             }
 
             JSONcontent[k].html += JSONcontent[k].text.substr(JSONcontent[k].stylesheet[j].startChar, JSONcontent[k].stylesheet[j].endChar - JSONcontent[k].stylesheet[j].startChar + 1);
@@ -690,8 +745,9 @@ function HTMLcreateSlideElement(slideElement) {
                 }
             }
 
+            var textAlign = 'text-align: center;'
 
-            content += '<h1 style="' + fontSize + '">' + slideElement.content[i].text + '</h1>';
+            content += '<h1 style="' + fontSize + textAlign + '">' + slideElement.content[i].text + '</h1>';
         }
 
         content += '</div>';
