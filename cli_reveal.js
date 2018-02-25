@@ -7,6 +7,9 @@
  * 2018-01-20:
  * TODO: Verlinkung von Inhalten übernehmen - erledigt
  * TODO: Verlinkung in Überschrift buggy - ggf. Stylesheet-Positionierung fehlerhaft.
+ * 
+ * 2018-02-02
+ * TODO: Layouts Komponenten am Ende des REST Resource ... bzgl. nachzüglicher Formatierungen.
  */
 
 var fs = require('fs');
@@ -54,6 +57,10 @@ function JSONcreateDeck(presentation) {
 
     for (var i = 0; i < presentation.slides.length; i++) {
         JSONdeck.children.push(JSONcreateSlide(presentation.slides[i]));
+    }
+
+    for (var j = 0; j < presentation.layouts.length; j++) {
+        console.log(presentation.layouts[j].objectId);
     }
 
     return JSON.stringify(JSONdeck);
@@ -390,21 +397,21 @@ function JSONcreateTextBox(text, contentType) {
             /*
              * Verlinkung prüfen
              */
-            if(true === checkLink && (typeof JSONcontent[k].stylesheet[j].link == 'undefined' ||  (typeof JSONcontent[k].stylesheet[j].link != 'undefined' && JSONcontent[k].stylesheet[j].link != checkLastLink))){
-            	checkLink = false;
-            	checkLastLink = false;
-            	JSONcontent[k].html += '</a>';
+            if (true === checkLink && (typeof JSONcontent[k].stylesheet[j].link == 'undefined' || (typeof JSONcontent[k].stylesheet[j].link != 'undefined' && JSONcontent[k].stylesheet[j].link != checkLastLink))) {
+                checkLink = false;
+                checkLastLink = false;
+                JSONcontent[k].html += '</a>';
             }
 
-            if(typeof JSONcontent[k].stylesheet[j].link != 'undefined' && JSONcontent[k].stylesheet[j].link != checkLastLink){
-            	checkLink = true;
-            	checkLastLink = JSONcontent[k].stylesheet[j].link;
-            	JSONcontent[k].html += '<a href="'+JSONcontent[k].stylesheet[j].link+'">';
+            if (typeof JSONcontent[k].stylesheet[j].link != 'undefined' && JSONcontent[k].stylesheet[j].link != checkLastLink) {
+                checkLink = true;
+                checkLastLink = JSONcontent[k].stylesheet[j].link;
+                JSONcontent[k].html += '<a href="' + JSONcontent[k].stylesheet[j].link + '">';
             }
 
-            if('Website improvements - www.slidewiki.eu ' == JSONcontent[k].text){
-            	console.log(JSONcontent[k].text[22]);
-            	console.log(JSONcontent[k].text.substr(JSONcontent[k].stylesheet[j].startChar, JSONcontent[k].stylesheet[j].endChar - JSONcontent[k].stylesheet[j].startChar + 1));
+            if ('Website improvements - www.slidewiki.eu ' == JSONcontent[k].text) {
+                console.log(JSONcontent[k].text[22]);
+                console.log(JSONcontent[k].text.substr(JSONcontent[k].stylesheet[j].startChar, JSONcontent[k].stylesheet[j].endChar - JSONcontent[k].stylesheet[j].startChar + 1));
             }
 
             JSONcontent[k].html += JSONcontent[k].text.substr(JSONcontent[k].stylesheet[j].startChar, JSONcontent[k].stylesheet[j].endChar - JSONcontent[k].stylesheet[j].startChar + 1);
@@ -675,13 +682,13 @@ function HTMLcreateSlideElement(slideElement) {
          */
 
         for (var i = 0; i < slideElement.content.length; i++) {
-        	var fontSize = '';
-        	if (typeof slideElement.content[i].stylesheet !== 'undefined' && slideElement.content[i].stylesheet.length > 0 && typeof slideElement.content[i].stylesheet[0].fontSize != 'undefined' && false !== typeof slideElement.content[i].stylesheet[0].fontSize) {
-		        fontSize = 'font-size: ' + slideElement.content[i].stylesheet[0].fontSize + '; ';
-		        if(false == slideElement.content[i].stylesheet[0].fontSize){
-		        	fontSize = 'font-size: 32pt; ';
-		        }
-		    }
+            var fontSize = '';
+            if (typeof slideElement.content[i].stylesheet !== 'undefined' && slideElement.content[i].stylesheet.length > 0 && typeof slideElement.content[i].stylesheet[0].fontSize != 'undefined' && false !== typeof slideElement.content[i].stylesheet[0].fontSize) {
+                fontSize = 'font-size: ' + slideElement.content[i].stylesheet[0].fontSize + '; ';
+                if (false == slideElement.content[i].stylesheet[0].fontSize) {
+                    fontSize = 'font-size: 32pt; ';
+                }
+            }
 
 
             content += '<h1 style="' + fontSize + '">' + slideElement.content[i].text + '</h1>';
@@ -694,11 +701,11 @@ function HTMLcreateSlideElement(slideElement) {
         content += '<div class="deck_subtitle" style="' + stylesheet + '">';
 
         for (var i = 0; i < slideElement.content.length; i++) {
-        	var fontSize = '';
-        	if (typeof slideElement.content[i].stylesheet !== 'undefined' && slideElement.content[i].stylesheet.length > 0 && typeof slideElement.content[i].stylesheet[0].fontSize != 'undefined' && false !== typeof slideElement.content[i].stylesheet[0].fontSize) {
-		        fontSize = 'font-size: ' + slideElement.content[i].stylesheet[0].fontSize + '; ';
-		    }
-            content += '<h' + (i + 2) + ' style="'+fontSize+'">' + slideElement.content[i].text + '</h' + (i + 2) + '>';
+            var fontSize = '';
+            if (typeof slideElement.content[i].stylesheet !== 'undefined' && slideElement.content[i].stylesheet.length > 0 && typeof slideElement.content[i].stylesheet[0].fontSize != 'undefined' && false !== typeof slideElement.content[i].stylesheet[0].fontSize) {
+                fontSize = 'font-size: ' + slideElement.content[i].stylesheet[0].fontSize + '; ';
+            }
+            content += '<h' + (i + 2) + ' style="' + fontSize + '">' + slideElement.content[i].text + '</h' + (i + 2) + '>';
         }
 
         content += '</div>';
@@ -763,8 +770,8 @@ function HTMLcreateSlideElement(slideElement) {
                     nestingLevel = slideElement.content[i].nestingLevel;
                     listCounter = 0;
                 } else if (slideElement.content[i].nestingLevel < nestingLevel) {
-                    for(var k=0; k<(nestingLevel-slideElement.content[i].nestingLevel);k++){
-                    	content += '</li></ul></li>';
+                    for (var k = 0; k < (nestingLevel - slideElement.content[i].nestingLevel); k++) {
+                        content += '</li></ul></li>';
                     }
                     nestingLevel = slideElement.content[i].nestingLevel;
                     listCounter = 0;
