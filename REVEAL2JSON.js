@@ -4,10 +4,10 @@ var fs = require("fs");
 var JSZip = require("jszip");
 
 // read a zip file
-fs.readFile("reveal.zip", function(err, data) {
+fs.readFile("reveal_2.zip", function(err, data) {
     JSZip.loadAsync(data).then(function(zip) {
         Object.keys(zip.files).forEach(function(filename) {
-            if (filename == "reveal.js/test.html") {
+            if (filename == "reveal_2.js/test.html") {
                 zip.files[filename].async('string').then(function(fileData) {
                     Reveal2JSON(fileData);
                 })
@@ -66,6 +66,8 @@ function Reveal2JSON(html) {
      * check link tags in html head to extract theme
      */
     JSONdeck.theme = 'default';
+
+    
     // Objective: indexOf for the next occurrence
     var startIndex = 0;
     // Descriminator: link href of stylesheets defines the reveal css theme
@@ -134,14 +136,48 @@ function Reveal2JSON(html) {
         /*
          * open section tag ends with ">", i.e. we needs the html source code between this element and the section end tag position
          */
-        JSONslide.content = html.substr(html.indexOf('>') + 1, end - html.indexOf('>') - 1)
+        JSONslide.content = html.substr(html.indexOf('>') + 1, end - html.indexOf('>') - 1);
+        // Objective: Remove whitespaces at the start / end (TRIM)
+        JSONslide.content = JSONslide.content.replace(/(\r?\n|\r)/gm, ' ').replace(/\s\s/g, "").replace(/\>\s/g, ">").replace(/\<\s/g, "<").trim();
+        // Objective: Remove line breakes
+        JSONslide.content = JSONslide.content.replace(/(\r?\n|\r)/gm, ' ');
+        // Objective: Remove (only) doubled whitespaces w.r.t. indents of the source code
+        JSONslide.content = JSONslide.content.replace(/\s\s/g, "");
+        // Objective: Remove remaining single whitespaces between tags
+        JSONslide.content = JSONslide.content.replace(/\>\s/g, ">").replace(/\<\s/g, "<");
 
-        // TODO: extract spreakernotes
+        // Objective: extract spreakernotes
         /*
-         * Option 1 - extract from attribute: <section data-notes="Something important">
-         * Option 2 - extract from <aside class="notes">{speaker_notes}</aside) within the sections
+         * Option 1 [done] - extract from attribute: <section data-notes="Something important">
+         * 
+         * Check occurrence of data-notes="{speaker_notes}" in <section{possible_occurrence}>
+         * and extract the string of the attribute value
          */
         JSONslide.speakernotes = '';
+        if(html.substr(html.indexOf('<section'),html.indexOf('>')).includes('data-notes="')){
+            JSONslide.speakernotes = html.substr(html.indexOf('data-notes="')+12,html.indexOf('"',html.indexOf('data-notes="')+13)-html.indexOf('data-notes="')-12);
+        }
+        // Objective: extract spreakernotes
+        /*
+         * Option 2 [done] - extract from <aside class="notes">{speaker_notes}</aside) within the sections
+         * 
+         * Check occurrence of <aside class="notes">{speaker_notes}</aside> in <section>{possible_occurrence}</section>
+         * and extract the string between the start & end tag
+         */
+        if(html.substr(html.indexOf('<section'),html.indexOf('</section>')).includes('<aside class="notes">')){
+            if(0 < JSONslide.speakernotes.length){
+                JSONslide.speakernotes += '<br>';
+            }
+            JSONslide.speakernotes += html.substr(html.indexOf('<aside class="notes">')+21,html.indexOf('</aside>')-html.indexOf('<aside class="notes">')-21);
+            // Objective: Remove whitespaces at the start / end (TRIM)
+            JSONslide.speakernotes = JSONslide.speakernotes.replace(/(\r?\n|\r)/gm, ' ').replace(/\s\s/g, "").replace(/\>\s/g, ">").replace(/\<\s/g, "<").trim();
+            // Objective: Remove line breakes
+            JSONslide.speakernotes = JSONslide.speakernotes.replace(/(\r?\n|\r)/gm, ' ');
+            // Objective: Remove (only) doubled whitespaces w.r.t. indents of the source code
+            JSONslide.speakernotes = JSONslide.speakernotes.replace(/\s\s/g, "");
+            // Objective: Remove remaining single whitespaces between tags
+            JSONslide.speakernotes = JSONslide.speakernotes.replace(/\>\s/g, ">").replace(/\<\s/g, "<");
+        }
 
         // Objective: Until the creation, the user of the decks / slides would bethe same
         JSONslide.user = JSONdeck.user;
@@ -158,6 +194,71 @@ function Reveal2JSON(html) {
         // Objective: remove the processed html parts / sections
         html = html.substr(end + 10, html.length - end + 10);
 
+        // Obejctive: Extract URLs / PATH / file names of integrated media files
+        /*
+         * tagStart stores the start position of the current media tag (i.e. "<")
+         * tagEnd stores the end position of the current media tag (i.e. ">")
+         * srcStart stores the start position of the current data source
+         * srcEnd stores the end position of the current data source
+         * tagContent stores the content of the current tag
+         *
+         * 1) indexOf() with current imgIndex+1 to find the next media tag
+         */
+        var tagStart = 0;
+        var tagEnd = 0;
+        var srcStart = 0;
+        var srcEnd = 0;
+        var tagContent = '';
+        var srcContent = '';
+        var srcURL = '';
+        var srcFilename = '';
+        var SlideWikiURL = '';
+        var SlideWikiFilename = '';
+        var regExp;
+        while(JSONslide.content.indexOf('<img', tagStart+1)){
+            // start position of current <img> tag
+            tagStart = JSONslide.content.indexOf('<img', tagStart+1);
+            
+            // break condition: if the slide content doesn't contain another <img> tag 
+            if(-1 == tagStart){
+                break;
+            }
+
+            // end position of current img <img>
+            tagEnd = JSONslide.content.indexOf('>', tagStart+1);
+            tagContent = JSONslide.content.substr(tagStart,tagEnd-tagStart);
+            if(tagContent.includes('src="')){
+                // start position of source: URL/PATH/FILE_NAME in src="{URL/PATH/FILE_NAME}"
+                srcStart = tagContent.indexOf('src="')+5;
+                // end position of source: URL/PATH/FILE_NAME in src="{URL/PATH/FILE_NAME}"
+                srcEnd = tagContent.indexOf('"',srcStart);
+
+                // string value of URL/PATH/FILE_NAME in src="{URL/PATH/FILE_NAME}"
+                srcContent = tagContent.substr(srcStart,srcEnd-srcStart);
+
+                if(srcContent.includes("/")){
+                    srcURL = srcContent.substr(0, srcContent.lastIndexOf('/')+1);
+                    srcFilename = srcContent.substr(srcContent.lastIndexOf('/')+1, srcContent.length-srcContent.lastIndexOf('/')-1);
+                } else {
+                    srcURL = '';
+                    srcFilename = srcContent;
+                }
+
+                // TODO: FileService
+                /*
+                 * POST / COPY approach for media files
+                 */
+                // TODO: correct url in SlideWiki to set
+                SlideWikiURL = 'https://fileservice.slidewiki.org/{id}/';
+                // TODO: correct filename in SlideWiki to set
+                SlideWikiFilename = srcFilename;
+
+                // Objective: Replace srcURL/Filename with SlideWikiURL/Filename
+                JSONslide.content = JSONslide.content.replace(srcURL+srcFilename, SlideWikiURL+SlideWikiFilename);
+            }
+            
+        }
+
         // Objective: push the final slide element to children[] 
         JSONdeck.children.push(JSONslide);
 
@@ -172,6 +273,7 @@ function Reveal2JSON(html) {
     // Objective: Export JSON
     var fileJSON = 'presentationSlidewikiRevealImport.json';
     writeFile(fileJSON, JSON.stringify(JSONdeck));
+
 
 }
 
