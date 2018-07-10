@@ -3,18 +3,24 @@
 var fs = require("fs");
 var JSZip = require("jszip");
 
+RevealZIP();
+
 // read a zip file
-fs.readFile("reveal_2.zip", function(err, data) {
-    JSZip.loadAsync(data).then(function(zip) {
-        Object.keys(zip.files).forEach(function(filename) {
-            if (filename == "reveal_2.js/test.html") {
-                zip.files[filename].async('string').then(function(fileData) {
-                    Reveal2JSON(fileData);
-                })
-            }
+
+function RevealZIP() {
+    fs.readFile("reveal_2.zip", function(err, data) {
+        JSZip.loadAsync(data).then(function(zip) {
+            Object.keys(zip.files).forEach(function(filename) {
+                if (filename == "reveal_2.js/test.html") {
+                    zip.files[filename].async('string').then(function(fileData) {
+                        Reveal2JSON(fileData);
+                    })
+                }
+            })
         })
-    })
-});
+    });
+
+}
 
 
 //Reveal2JSON
@@ -25,8 +31,8 @@ function Reveal2JSON(html) {
     // Objective: Increment of count of slides in the deck for JSON.deck.slidesCount
     var slideCounter = 0;
 
-    // Objective: auxiliary variable for string positions w.r.t. to start, end, area (source code between start and end) of e.g. sections
-    var start, end, area;
+    // Objective: auxiliary variable for string positions w.r.t. to start, end, tag (source code between start and end) of e.g. sections
+    var start, end, tag;
 
     // Objective: Check existence of html head section, e.g. for the possibility of extracting title tags, themes, etc.
     /*
@@ -67,23 +73,25 @@ function Reveal2JSON(html) {
      */
     JSONdeck.theme = 'default';
 
-    
+
     // Objective: indexOf for the next occurrence
     var startIndex = 0;
     // Descriminator: link href of stylesheets defines the reveal css theme
     var href;
-    while (-1 < htmlHead.indexOf('<link', startIndex)) {
-        start = htmlHead.indexOf('<link', startIndex);
-        end = htmlHead.indexOf('>', start);
-        area = htmlHead.substr(start+5, end - start - 5).trim();
-        //console.log(area);
+    // [deprecated: 2018/07/06]while (-1 < htmlHead.indexOf('<link', startIndex)) {
+    while (getTag(htmlHead, 'link', startIndex)) {
+        // [deprecated: 2018/07/06] start = htmlHead.indexOf('<link', startIndex);
+        // [deprecated: 2018/07/06]end = htmlHead.indexOf('>', start);
+        // [deprecated: 2018/07/06]tag = htmlHead.substr(start + 5, end - start - 5).trim();
+        //console.log(getTag(htmlHead,'link', startIndex));
+        tag = getTag(htmlHead, 'link', startIndex)
+        //console.log(tag);
 
         // Objetice: Check if the current link tag contains stylesheets and an attribute for an url
-        if (area.includes('rel="stylesheet"') && area.includes('href="')) {
+        // [deprecated: 2018/07/06] if (tag.includes('rel="stylesheet"') && tag.includes('href="')) {
+        if ('stylesheet' === getAttribute(tag, 'rel') && getAttribute(tag, 'href')) {
             // Obective: Extracts url for stylesheet file
-            start = area.indexOf('href="');
-            end = area.indexOf('"', start+6);
-            href = area.substr(start+6, end - start - 6);
+            href = getAttribute(tag, 'href');
 
             // theme assignment
             /*
@@ -92,7 +100,7 @@ function Reveal2JSON(html) {
              * (!) reveal default reveal theme is black vs. slide wiki white
              * TODO: check values for themes in the slide wiki plattform
              */
-            switch(href) {
+            switch (href) {
                 case 'css/theme/black.css':
                     JSONdeck.theme = 'black';
                     break;
@@ -117,7 +125,7 @@ function Reveal2JSON(html) {
     // Objective: Betrachten von 
     var html = html.substr(html.indexOf('<section'), html.length - html.indexOf('<section'));
 
-    // Objective: each section area represents an element of children = [] 
+    // Objective: each section tag represents an element of children = [] 
     while (html.indexOf('<section') > -1) {
         // var for the children element
         var JSONslide = {};
@@ -132,13 +140,38 @@ function Reveal2JSON(html) {
         start = html.indexOf('<section'); // currenlty, not in use
         end = html.indexOf('</section>');
 
+        // Objective: Extract slide background 
+        /*
+         * (1) Get current <section {data-background-*}> tag
+         * (2) Extract data-background-*
+         * (3) set backgroundCheck true if there exists data-background-color/image/video or a style attribute
+         * 
+         * Other data-background-* attributes are secondary
+         *
+         * Construction of a sorrounding div container for background attributes
+         */
+        var sectionTag = getTag(html, 'section');
+        var divContainer = false;
+        var backgroundColor = getAttribute(sectionTag, 'data-background-color');
+        var backgroundImage = getAttribute(sectionTag, 'data-background-image');
+        var backgroundSize = getAttribute(sectionTag, 'data-background-size');
+        var backgroundPosition = getAttribute(sectionTag, 'data-background-position');
+        var backgroundRepeat = getAttribute(sectionTag, 'data-background-repeat');
+        var backgroundVideo = getAttribute(sectionTag, 'data-background-video');
+        var backgroundVideoLoop = getAttribute(sectionTag, 'data-background-video-loop');
+        var backgroundVideoMuted = getAttribute(sectionTag, 'data-background-video-muted');
+        var sectionStyle = getAttribute(sectionTag, 'style');
+        if (backgroundColor != false || backgroundImage != false || backgroundVideo != false || sectionStyle != false) {
+            divContainer = true;
+        }
+
         // Objective: extract HTML content for children element
         /*
          * open section tag ends with ">", i.e. we needs the html source code between this element and the section end tag position
          */
         JSONslide.content = html.substr(html.indexOf('>') + 1, end - html.indexOf('>') - 1);
         // Objective: Remove whitespaces at the start / end (TRIM)
-        JSONslide.content = JSONslide.content.replace(/(\r?\n|\r)/gm, ' ').replace(/\s\s/g, "").replace(/\>\s/g, ">").replace(/\<\s/g, "<").trim();
+        JSONslide.content = JSONslide.content.trim();
         // Objective: Remove line breakes
         JSONslide.content = JSONslide.content.replace(/(\r?\n|\r)/gm, ' ');
         // Objective: Remove (only) doubled whitespaces w.r.t. indents of the source code
@@ -154,8 +187,8 @@ function Reveal2JSON(html) {
          * and extract the string of the attribute value
          */
         JSONslide.speakernotes = '';
-        if(html.substr(html.indexOf('<section'),html.indexOf('>')).includes('data-notes="')){
-            JSONslide.speakernotes = html.substr(html.indexOf('data-notes="')+12,html.indexOf('"',html.indexOf('data-notes="')+13)-html.indexOf('data-notes="')-12);
+        if (html.substr(html.indexOf('<section'), html.indexOf('>')).includes('data-notes="')) {
+            JSONslide.speakernotes = html.substr(html.indexOf('data-notes="') + 12, html.indexOf('"', html.indexOf('data-notes="') + 13) - html.indexOf('data-notes="') - 12);
         }
         // Objective: extract spreakernotes
         /*
@@ -164,11 +197,11 @@ function Reveal2JSON(html) {
          * Check occurrence of <aside class="notes">{speaker_notes}</aside> in <section>{possible_occurrence}</section>
          * and extract the string between the start & end tag
          */
-        if(html.substr(html.indexOf('<section'),html.indexOf('</section>')).includes('<aside class="notes">')){
-            if(0 < JSONslide.speakernotes.length){
+        if (html.substr(html.indexOf('<section'), html.indexOf('</section>')).includes('<aside class="notes">')) {
+            if (0 < JSONslide.speakernotes.length) {
                 JSONslide.speakernotes += '<br>';
             }
-            JSONslide.speakernotes += html.substr(html.indexOf('<aside class="notes">')+21,html.indexOf('</aside>')-html.indexOf('<aside class="notes">')-21);
+            JSONslide.speakernotes += html.substr(html.indexOf('<aside class="notes">') + 21, html.indexOf('</aside>') - html.indexOf('<aside class="notes">') - 21);
             // Objective: Remove whitespaces at the start / end (TRIM)
             JSONslide.speakernotes = JSONslide.speakernotes.replace(/(\r?\n|\r)/gm, ' ').replace(/\s\s/g, "").replace(/\>\s/g, ">").replace(/\<\s/g, "<").trim();
             // Objective: Remove line breakes
@@ -191,9 +224,6 @@ function Reveal2JSON(html) {
         // Objective: default value for slides
         JSONslide.type = "slide";
 
-        // Objective: remove the processed html parts / sections
-        html = html.substr(end + 10, html.length - end + 10);
-
         // Obejctive: Extract URLs / PATH / file names of integrated media files
         /*
          * tagStart stores the start position of the current media tag (i.e. "<")
@@ -209,39 +239,48 @@ function Reveal2JSON(html) {
         var srcStart = 0;
         var srcEnd = 0;
         var tagContent = '';
+        var replacedTagContent = '';
         var srcContent = '';
         var srcURL = '';
         var srcFilename = '';
         var SlideWikiURL = '';
         var SlideWikiFilename = '';
         var regExp;
-        while(JSONslide.content.indexOf('<img', tagStart+1)){
+        while (JSONslide.content.indexOf('<img', tagStart + 1)) {
+            //while (getTag(JSONslide.content,tagStart,'img',tagStart+1)) {
             // start position of current <img> tag
-            tagStart = JSONslide.content.indexOf('<img', tagStart+1);
-            
+            tagStart = JSONslide.content.indexOf('<img', tagStart + 1);
+
             // break condition: if the slide content doesn't contain another <img> tag 
-            if(-1 == tagStart){
+            if (-1 == tagStart) {
                 break;
             }
 
             // end position of current img <img>
-            tagEnd = JSONslide.content.indexOf('>', tagStart+1);
-            tagContent = JSONslide.content.substr(tagStart,tagEnd-tagStart);
-            if(tagContent.includes('src="')){
-                // start position of source: URL/PATH/FILE_NAME in src="{URL/PATH/FILE_NAME}"
-                srcStart = tagContent.indexOf('src="')+5;
-                // end position of source: URL/PATH/FILE_NAME in src="{URL/PATH/FILE_NAME}"
-                srcEnd = tagContent.indexOf('"',srcStart);
+            tagEnd = JSONslide.content.indexOf('>', tagStart + 1);
+            tagContent = JSONslide.content.substr(tagStart, tagEnd - tagStart);
 
-                // string value of URL/PATH/FILE_NAME in src="{URL/PATH/FILE_NAME}"
-                srcContent = tagContent.substr(srcStart,srcEnd-srcStart);
+            // Objective: change src attribute to data-src in <img> tags
+            /*
+             * (1) Replace occurrence of » src="« in the tag content with blank character
+             * (2) Replace the whole tag content in the slide content
+             * (3) Search the new img tag end
+             */
+            replacedTagContent = tagContent.replace(' src="', ' data-src="');
+            JSONslide.content = JSONslide.content.replace(tagContent, replacedTagContent);
+            tagEnd = JSONslide.content.indexOf('>', tagStart + 1);
+            tagContent = replacedTagContent;
 
-                if(srcContent.includes("/")){
-                    srcURL = srcContent.substr(0, srcContent.lastIndexOf('/')+1);
-                    srcFilename = srcContent.substr(srcContent.lastIndexOf('/')+1, srcContent.length-srcContent.lastIndexOf('/')-1);
+            // 
+            var srcPath = getAttribute(tagContent, 'data-src');
+            if (false != srcPath) {
+                console.log('test');
+                if (srcPath.includes("/")) {
+                    srcURL = srcPath.substr(0, srcPath.lastIndexOf('/') + 1);
+                    srcFilename = srcPath.substr(srcPath.lastIndexOf('/') + 1, srcPath.length - srcPath.lastIndexOf('/') - 1);
                 } else {
                     srcURL = '';
-                    srcFilename = srcContent;
+                    srcFilename = srcPath;
                 }
 
                 // TODO: FileService
@@ -254,13 +293,56 @@ function Reveal2JSON(html) {
                 SlideWikiFilename = srcFilename;
 
                 // Objective: Replace srcURL/Filename with SlideWikiURL/Filename
-                JSONslide.content = JSONslide.content.replace(srcURL+srcFilename, SlideWikiURL+SlideWikiFilename);
+                JSONslide.content = JSONslide.content.replace(srcURL + srcFilename, SlideWikiURL + SlideWikiFilename);
             }
-            
+
+        }
+
+        // Objective: Creation of a sorrounding div container
+        /*
+         * (1) Check if div container is needed
+         */
+        if (divContainer) {
+            JSONslide.content = '>' + JSONslide.content;
+
+            if (sectionStyle != false) {
+                JSONslide.content = ' style="' + sectionStyle + '"' + JSONslide.content;
+            }
+
+            if (backgroundVideoMuted != false) {
+                JSONslide.content = ' data-background-video-muted="' + backgroundVideoMuted + '"' + JSONslide.content;
+            }
+            if (backgroundVideoLoop != false) {
+                JSONslide.content = ' data-background-video-loop="' + backgroundVideoLoop + '"' + JSONslide.content;
+            }
+            if (backgroundVideo != false) {
+                JSONslide.content = ' data-background-video="' + backgroundVideo + '"' + JSONslide.content;
+            }
+            if (backgroundRepeat != false) {
+                JSONslide.content = ' data-background-repeat="' + backgroundRepeat + '"' + JSONslide.content;
+            }
+            if (backgroundPosition != false) {
+                JSONslide.content = ' data-background-position="' + backgroundPosition + '"' + JSONslide.content;
+            }
+            if (backgroundSize != false) {
+                JSONslide.content = ' data-background-size="' + backgroundSize + '"' + JSONslide.content;
+            }
+            if (backgroundImage != false) {
+                JSONslide.content = ' data-background-image="' + backgroundImage + '"' + JSONslide.content;
+            }
+            if (backgroundColor != false) {
+                JSONslide.content = ' data-background-color="' + backgroundColor + '"' + JSONslide.content;
+            }
+
+            JSONslide.content = '<div' + JSONslide.content;
+            JSONslide.content = JSONslide.content + '</div>';
         }
 
         // Objective: push the final slide element to children[] 
         JSONdeck.children.push(JSONslide);
+
+        // Objective: remove the processed html parts / sections
+        html = html.substr(end + 10, html.length - end + 10);
 
         // Objective: Increment the slide counter for the overall slidesCount of the deck and next slide id
         slideCounter++;
@@ -277,6 +359,91 @@ function Reveal2JSON(html) {
 
 }
 
+// Function: getTag [Release: 2018/07/06]
+/*
+ * (1) Search in html code for a tag
+ * (2) Check if it is a regular / usable tag
+ * (3.1) Return the tag content OR (3.2) false in the case of an error
+ */
+function getTag(html, tag, index = 0) {
+    var tagStart = 0,
+        tagEnd = 0;
+
+    html = html.substring(index, html.length);
+
+    // (1) Search in html code for a tag
+    if (html.includes('<' + tag)) {
+        tagStart = html.indexOf('<' + tag) + tag.length + 1;
+
+        // (2) Check if it is a regular / usable tag
+        if (html.includes('>', tagStart)) {
+            tagEnd = html.indexOf('>', tagStart);
+
+            // (3.1) Return the tag content 
+            return html.substr(tagStart, tagEnd - tagStart).trim();
+        }
+    }
+
+    // (3.2) Return false in the case of an error
+    return false;
+}
+
+// Function: getAttribute [Release: 2018/07/06]
+/*
+ * (1) Search in a tag for an attribute
+ * (2) Check if it is a regular / usable attribute
+ * (3.1) Return the attribute content OR (3.2) false in the case of an error
+ */
+function getAttribute(tag, attribute) {
+    var attributeStart = 0,
+        attributeEnd = 0;
+
+    // (1) Search in a tag for an attribute
+    if (tag.includes(attribute + '="')) {
+        attributeStart = tag.indexOf(attribute + '="') + attribute.length + 2;
+
+        // (2) Check if it is a regular / usable attribute
+        if (tag.includes('"', attributeStart)) {
+            attributeEnd = tag.indexOf('"', attributeStart);
+
+            // (3.1) Return the attribute content 
+            return tag.substr(attributeStart, attributeEnd - attributeStart);
+        }
+
+    }
+
+    // (3.2) Return false in the case of an error
+    return false;
+}
+
+// Function: getURLinCSS [Release: 2018/07/10]
+/*
+ * (1) Search in a stylesheet for an url
+ * (2) Check if it is a regular / usable url
+ * (3.1) Return the url content OR (3.2) false in the case of an error
+ */
+function getURLinCSS(stylesheet, index = 0) {
+    var urlStart = 0,
+        urlEnd = 0;
+
+    stylesheet = stylesheet.substring(index, stylesheet.length);
+
+    // (1) Search in stylesheet for a url
+    if (stylesheet.includes('url(')) {
+        urlStart = stylesheet.indexOf('url(')+1;
+
+        // (2) Check if it is a regular / usable tag
+        if (stylesheet.includes(')', urlStart)) {
+            urlEnd = stylesheet.indexOf(')', urlStart);
+
+            // (3.1) Return the tag content 
+            return stylesheet.substr(urlStart, urlEnd - urlStart).trim();
+        }
+    }
+
+    // (3.2) Return false in the case of an error
+    return false;
+}
 
 function writeFile(file, content) {
     fs.writeFile(file, content, function(err) {
