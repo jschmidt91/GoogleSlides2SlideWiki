@@ -8,10 +8,10 @@ RevealZIP();
 // read a zip file
 
 function RevealZIP() {
-    fs.readFile("reveal_2.zip", function(err, data) {
+    fs.readFile("reveal.zip", function(err, data) {
         JSZip.loadAsync(data).then(function(zip) {
             Object.keys(zip.files).forEach(function(filename) {
-                if (filename == "reveal_2.js/test.html") {
+                if (filename == "reveal.js/test.html") {
                     zip.files[filename].async('string').then(function(fileData) {
                         Reveal2JSON(fileData);
                     })
@@ -57,7 +57,7 @@ function Reveal2JSON(html) {
     //console.log(JSONdeck.title);
 
     // Objective: GET deck id from System later - TODO
-    JSONdeck.id = 42;
+    JSONdeck.id = 42 + '-' + 1;
 
     // Objective: default value, cf. deckservice.{environment}.slidewiki.org/deck/{id}/slides
     JSONdeck.type = 'deck';
@@ -152,6 +152,7 @@ function Reveal2JSON(html) {
          */
         var sectionTag = getTag(html, 'section');
         var divContainer = false;
+        // reveal.js background attributes
         var backgroundColor = getAttribute(sectionTag, 'data-background-color');
         var backgroundImage = getAttribute(sectionTag, 'data-background-image');
         var backgroundSize = getAttribute(sectionTag, 'data-background-size');
@@ -160,8 +161,13 @@ function Reveal2JSON(html) {
         var backgroundVideo = getAttribute(sectionTag, 'data-background-video');
         var backgroundVideoLoop = getAttribute(sectionTag, 'data-background-video-loop');
         var backgroundVideoMuted = getAttribute(sectionTag, 'data-background-video-muted');
+        var backgroundIframe = getAttribute(sectionTag, 'data-background-iframe');
+        // reveal.js transition attributes
+        var transition = getAttribute(sectionTag, 'data-transition');
+        var transitionSpeed = getAttribute(sectionTag, 'data-transition-speed');
+        // stylesheet attrbiute 
         var sectionStyle = getAttribute(sectionTag, 'style');
-        if (backgroundColor != false || backgroundImage != false || backgroundVideo != false || sectionStyle != false) {
+        if (backgroundColor != false || backgroundImage != false || backgroundVideo != false || backgroundIframe != false || transition != false || sectionStyle != false) {
             divContainer = true;
         }
 
@@ -216,7 +222,7 @@ function Reveal2JSON(html) {
         JSONslide.user = JSONdeck.user;
 
         // Objective: slide id w.r.t. deck id & additional counter / increment
-        JSONslide.id = JSONdeck.id + "-" + slideCounter;
+        JSONslide.id = JSONdeck.id + "-" + slideCounter + 1;
 
         // Objective: reveal defines an overall theme in the html head, so it should be the same here
         JSONslide.theme = JSONdeck.theme;
@@ -242,10 +248,9 @@ function Reveal2JSON(html) {
         var replacedTagContent = '';
         var srcContent = '';
         var srcURL = '';
-        var srcFilename = '';
-        var SlideWikiURL = '';
-        var SlideWikiFilename = '';
         var regExp;
+        var SlideWikiURL = 'https://fileservice.slidewiki.org/{id}/';
+        var SlideWikiFilename = '';
         while (JSONslide.content.indexOf('<img', tagStart + 1)) {
             //while (getTag(JSONslide.content,tagStart,'img',tagStart+1)) {
             // start position of current <img> tag
@@ -271,30 +276,10 @@ function Reveal2JSON(html) {
             tagEnd = JSONslide.content.indexOf('>', tagStart + 1);
             tagContent = replacedTagContent;
 
-            // 
-            var srcPath = getAttribute(tagContent, 'data-src');
-            if (false != srcPath) {
-                console.log('test');
-                if (srcPath.includes("/")) {
-                    srcURL = srcPath.substr(0, srcPath.lastIndexOf('/') + 1);
-                    srcFilename = srcPath.substr(srcPath.lastIndexOf('/') + 1, srcPath.length - srcPath.lastIndexOf('/') - 1);
-                } else {
-                    srcURL = '';
-                    srcFilename = srcPath;
-                }
+            // Objective replace originial URLs with URL with the related SlideWiki Plattform URL
+            // TODO: correct url in SlideWiki to set
+            JSONslide.content = replaceAttributeURL(JSONslide.content, tagContent, 'data-src', SlideWikiURL+'images/', SlideWikiFilename);
 
-                // TODO: FileService
-                /*
-                 * POST / COPY approach for media files
-                 */
-                // TODO: correct url in SlideWiki to set
-                SlideWikiURL = 'https://fileservice.slidewiki.org/{id}/';
-                // TODO: correct filename in SlideWiki to set
-                SlideWikiFilename = srcFilename;
-
-                // Objective: Replace srcURL/Filename with SlideWikiURL/Filename
-                JSONslide.content = JSONslide.content.replace(srcURL + srcFilename, SlideWikiURL + SlideWikiFilename);
-            }
 
         }
 
@@ -309,6 +294,15 @@ function Reveal2JSON(html) {
                 JSONslide.content = ' style="' + sectionStyle + '"' + JSONslide.content;
             }
 
+            if (transitionSpeed != false) {
+                JSONslide.content = ' data-transition-speed="' + transitionSpeed + '"' + JSONslide.content;
+            }
+            if (transition != false) {
+                JSONslide.content = ' data-transition="' + transition + '"' + JSONslide.content;
+            }
+            if (backgroundIframe != false) {
+                JSONslide.content = ' data-background-iframe="' + backgroundIframe + '"' + JSONslide.content;
+            }
             if (backgroundVideoMuted != false) {
                 JSONslide.content = ' data-background-video-muted="' + backgroundVideoMuted + '"' + JSONslide.content;
             }
@@ -317,6 +311,7 @@ function Reveal2JSON(html) {
             }
             if (backgroundVideo != false) {
                 JSONslide.content = ' data-background-video="' + backgroundVideo + '"' + JSONslide.content;
+                JSONslide.content = replaceAttributeURL(JSONslide.content, JSONslide.content, 'data-background-video',SlideWikiURL+'video/', SlideWikiFilename);
             }
             if (backgroundRepeat != false) {
                 JSONslide.content = ' data-background-repeat="' + backgroundRepeat + '"' + JSONslide.content;
@@ -329,6 +324,7 @@ function Reveal2JSON(html) {
             }
             if (backgroundImage != false) {
                 JSONslide.content = ' data-background-image="' + backgroundImage + '"' + JSONslide.content;
+                JSONslide.content = replaceAttributeURL(JSONslide.content, JSONslide.content, 'data-background-image',SlideWikiURL+'image/', SlideWikiFilename);
             }
             if (backgroundColor != false) {
                 JSONslide.content = ' data-background-color="' + backgroundColor + '"' + JSONslide.content;
@@ -430,7 +426,7 @@ function getURLinCSS(stylesheet, index = 0) {
 
     // (1) Search in stylesheet for a url
     if (stylesheet.includes('url(')) {
-        urlStart = stylesheet.indexOf('url(')+1;
+        urlStart = stylesheet.indexOf('url(') + 1;
 
         // (2) Check if it is a regular / usable tag
         if (stylesheet.includes(')', urlStart)) {
@@ -443,6 +439,43 @@ function getURLinCSS(stylesheet, index = 0) {
 
     // (3.2) Return false in the case of an error
     return false;
+}
+
+// Function: replaceAttributeURL
+/*
+ *
+ */
+function replaceAttributeURL(content, tagContent, attribute, url, filename) {
+    var srcPath = getAttribute(tagContent, attribute);
+    var srcURL = '',
+        srcFilename = '',
+        SlideWikiURL = '',
+        SlideWikiFilename = '';
+
+    if (false != srcPath) {
+        if (srcPath.includes("/")) {
+            srcURL = srcPath.substr(0, srcPath.lastIndexOf('/') + 1);
+            srcFilename = srcPath.substr(srcPath.lastIndexOf('/') + 1, srcPath.length - srcPath.lastIndexOf('/') - 1);
+        } else {
+            srcURL = '';
+            srcFilename = srcPath;
+        }
+
+        // TODO: FileService
+        /*
+         * POST / COPY approach for media files
+         */
+        // TODO: correct url in SlideWiki to set
+        SlideWikiURL = url;
+        // TODO: correct filename in SlideWiki to set
+        //SlideWikiFilename = filename
+        SlideWikiFilename = srcFilename;
+
+        // Objective: Replace srcURL/Filename with SlideWikiURL/Filename
+        content = content.replace(srcURL + srcFilename, SlideWikiURL + SlideWikiFilename);
+    }
+
+    return content;
 }
 
 function writeFile(file, content) {
